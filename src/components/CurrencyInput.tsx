@@ -1,4 +1,12 @@
-import React, { FC, useState, useEffect, useRef, forwardRef, useMemo } from 'react';
+import React, {
+  FC,
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useMemo,
+  useImperativeHandle,
+} from 'react';
 import { CurrencyInputProps, CurrencyInputOnChangeValues } from './CurrencyInputProps';
 import {
   isNumber,
@@ -96,19 +104,19 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
       transformRawValue,
     };
 
-    const formattedStateValue =
-      defaultValue !== undefined && defaultValue !== null
+    const [stateValue, setStateValue] = useState(() =>
+      defaultValue != null
         ? formatValue({ ...formatValueOptions, decimalScale, value: String(defaultValue) })
-        : userValue !== undefined && userValue !== null
+        : userValue != null
         ? formatValue({ ...formatValueOptions, decimalScale, value: String(userValue) })
-        : '';
-
-    const [stateValue, setStateValue] = useState(formattedStateValue);
+        : ''
+    );
     const [dirty, setDirty] = useState(false);
     const [cursor, setCursor] = useState(0);
     const [changeCount, setChangeCount] = useState(0);
     const [lastKeyStroke, setLastKeyStroke] = useState<string | null>(null);
-    const inputRef = ref || useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
     /**
      * Process change in value
@@ -133,6 +141,8 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
       if (stringValue === '' || stringValue === '-' || stringValue === decimalSeparator) {
         onValueChange && onValueChange(undefined, name, { float: null, formatted: '', value: '' });
         setStateValue(stringValue);
+        // Always sets cursor after '-' or decimalSeparator input
+        setCursor(1);
         return;
       }
 
@@ -147,7 +157,7 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
         ...formatValueOptions,
       });
 
-      if (cursorPosition !== undefined && cursorPosition !== null) {
+      if (cursorPosition != null) {
         // Prevent cursor jumping
         let newCursor = cursorPosition + (formattedValue.length - value.length);
         newCursor = newCursor <= 0 ? (prefix ? prefix.length : 0) : newCursor;
@@ -226,7 +236,7 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
 
       const valueOnly = cleanValue({ value: limitedValue, ...cleanValueOptions });
 
-      if (valueOnly === '-' || !valueOnly) {
+      if (valueOnly === '-' || valueOnly === decimalSeparator || !valueOnly) {
         setStateValue('');
         onBlur && onBlur(event);
         return;
@@ -276,17 +286,17 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
 
         const currentValue =
           parseFloat(
-            userValue !== undefined && userValue !== null
+            userValue != null
               ? String(userValue).replace(decimalSeparator, '.')
               : cleanValue({ value: stateValue, ...cleanValueOptions })
           ) || 0;
         const newValue = key === 'ArrowUp' ? currentValue + step : currentValue - step;
 
-        if (min !== undefined && newValue < min) {
+        if (min !== undefined && newValue < Number(min)) {
           return;
         }
 
-        if (max !== undefined && newValue > max) {
+        if (max !== undefined && newValue > Number(max)) {
           return;
         }
 
@@ -320,7 +330,7 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
 
         if (suffix && selectionStart && selectionStart > stateValue.length - suffix.length) {
           /* istanbul ignore else */
-          if (inputRef && typeof inputRef === 'object' && inputRef.current) {
+          if (inputRef.current) {
             const newCursor = stateValue.length - suffix.length;
             inputRef.current.setSelectionRange(newCursor, newCursor);
           }
@@ -330,13 +340,18 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
       onKeyUp && onKeyUp(event);
     };
 
+    // Update state if userValue changes to undefined
+    useEffect(() => {
+      if (userValue == null && defaultValue == null) {
+        setStateValue('');
+      }
+    }, [defaultValue, userValue]);
+
     useEffect(() => {
       // prevent cursor jumping if editing value
       if (
         dirty &&
         stateValue !== '-' &&
-        inputRef &&
-        typeof inputRef === 'object' &&
         inputRef.current &&
         document.activeElement === inputRef.current
       ) {
@@ -350,8 +365,7 @@ export const CurrencyInput: FC<CurrencyInputProps> = forwardRef<
      */
     const getRenderValue = () => {
       if (
-        userValue !== undefined &&
-        userValue !== null &&
+        userValue != null &&
         stateValue !== '-' &&
         (!decimalSeparator || stateValue !== decimalSeparator)
       ) {
